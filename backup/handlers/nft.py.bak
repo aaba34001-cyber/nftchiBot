@@ -1,0 +1,341 @@
+import re
+from decimal import Decimal
+from aiogram import Router, F, Bot
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+from sqlalchemy import select, func
+from database import AsyncSessionLocal, User, NFT, Currency, NFTStatus
+from keyboards.inline import get_currency_kb, get_admin_approval_kb, get_my_nft_kb
+from services.nft_service import NFTService
+from services.advertisement import delete_nft_ads
+from services.utils import fmt_price, time_left, esc
+from config import config
+
+router = Router()
+router.message.filter(F.chat.type == "private")
+
+LINK_RE = re.compile(r"^(?:https?://)?t\.me/nft/[A-Za-z0-9_\-]+$", re.I)
+
+
+class NFTCreation(StatesGroup):
+    waiting_media = State()
+    link = State()
+    currency = State()
+    price = State()
+
+
+def norm_link(text: str) -> str:
+    text = text.strip()
+    if not text.lower().startswith("http"):
+        text = "https://" + text
+    return text
+
+
+async def begin_sell(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    if not message.from_user.username:
+        await message.answer(
+            "❗️ Avval Telegram sozlamalarida <b>username</b> o'rnating (Settings → Username), "
+            "keyin qayta urinib ko'ring. Xaridorlar siz bilan shu orqali bog'lanadi."
+        )
+        return
+    async with AsyncSessionLocal() as session:
+        user = await session.get(User, uid)
+        if user and user.is_banned:
+            await message.answer("🚫 Siz bloklangansiz.")
+            return
+        err = await NFTService.check_can_post(session, uid)
+    if err:
+        await message.answer(err)
+        return
+    await state.set_state(NFTCreation.link)
+
+    await message.answer(
+        "📋 <b>NFT sotish tartibi</b>\n\n"
+        f"1️⃣ Avval 15 ta NFT GIF/rasmni @{config.PLATFORM_ADMIN_USERNAME} ga yuboring.\n"
+        "2️⃣ Admin NFTlaringizni tekshiradi va tasdiqlaydi.\n\n"
+        "⏳ Admin tasdig‘ini kuting.",
+        parse_mode="HTML"
+    )
+
+
+@router.message(NFTCreation.waiting_media, F.photo)
+async def receive_nft_photo(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    count = data.get("media_count", 0)
+
+    if count >= 15:
+        await message.answer("✅ 15 ta NFT qabul qilindi. Admin tasdig‘ini kuting.")
+        return
+
+    try:
+        await bot.send_photo(
+            chat_id=f"@{config.PLATFORM_ADMIN_USERNAME}",
+            photo=message.photo[-1].file_id,
+            caption=(
+                f"🖼 <b>NFT #{count + 1}/15</b>\n\n"
+                f"👤 Foydalanuvchi: @{message.from_user.username or 'username yo‘q'}\n"
+                f"🆔 ID: <code>{message.from_user.id}</code>"
+            ),
+            parse_mode="HTML"
+        )
+
+        count += 1
+        await state.update_data(media_count=count)
+
+        if count < 15:
+            await message.answer(
+                f"✅ NFT #{count}/15 qabul qilindi.\n"
+                f"📸 Yana {15 - count} ta NFT GIF/rasm yuboring."
+            )
+        else:
+            await message.answer(
+                "✅ 15 ta NFT qabul qilindi.\n\n"
+                "⏳ Admin NFTlaringizni tekshiradi va tasdiqlaydi."
+            )
+
+    except Exception as e:
+        print(f"ADMIN NFT SEND ERROR: {e}")
+        await message.answer(
+            "❌ NFTni adminga yuborishda xatolik yuz berdi."
+        )
+
+
+@router.message(NFTCreation.waiting_media, F.animation)
+async def receive_nft_gif(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    count = data.get("media_count", 0)
+
+    if count >= 15:
+        await message.answer("✅ 15 ta NFT qabul qilindi. Admin tasdig‘ini kuting.")
+        return
+
+    try:
+        await bot.send_animation(
+            chat_id=f"@{config.PLATFORM_ADMIN_USERNAME}",
+            animation=message.animation.file_id,
+            caption=(
+                f"🎞 <b>NFT #{count + 1}/15</b>\n\n"
+                f"👤 Foydalanuvchi: @{message.from_user.username or 'username yo‘q'}\n"
+                f"🆔 ID: <code>{message.from_user.id}</code>"
+            ),
+            parse_mode="HTML"
+        )
+
+        count += 1
+        await state.update_data(media_count=count)
+
+        if count < 15:
+            await message.answer(
+                f"✅ NFT #{count}/15 qabul qilindi.\n"
+                f"🎞 Yana {15 - count} ta NFT GIF/rasm yuboring."
+            )
+        else:
+            await message.answer(
+                "✅ 15 ta NFT qabul qilindi.\n\n"
+                "⏳ Admin NFTlaringizni tekshiradi va tasdiqlaydi."
+            )
+
+    except Exception as e:
+        print(f"ADMIN GIF SEND ERROR: {e}")
+        await message.answer(
+            "❌ GIFni adminga yuborishda xatolik yuz berdi."
+        )
+
+
+@router.message(F.text == "🖼 NFT joylash")
+async def start_nft_create(message: Message, state: FSMContext):
+    await begin_sell(message, state)
+
+
+@router.message(NFTCreation.link, F.text)
+async def process_link(message: Message, state: FSMContext):
+    raw = message.text.strip()
+    if not LINK_RE.match(raw):
+        await message.answer("❌ Noto'g'ri havola. Faqat NFT havolasi qabul qilinadi, masalan:\nt.me/nft/ChillFlame-96489")
+        return
+    link = norm_link(raw)
+    async with AsyncSessionLocal() as session:
+        exists = (await session.execute(
+            select(NFT.id).where(
+                func.lower(NFT.nft_link) == link.lower(),
+                NFT.status.in_([NFTStatus.PENDING, NFTStatus.ACTIVE]),
+            )
+        )).first()
+    if exists:
+        await message.answer("❌ Bu NFT allaqachon qo'yilgan.")
+        return
+    await state.update_data(nft_link=link)
+    await state.set_state(NFTCreation.currency)
+    await message.answer("💱 Valyutani tanlang:", reply_markup=get_currency_kb())
+
+
+@router.callback_query(NFTCreation.currency, F.data.startswith("curr_"))
+async def process_currency(call: CallbackQuery, state: FSMContext):
+    curr = call.data.split("_")[1]
+    if curr not in ("TON", "UZS"):
+        await call.answer()
+        return
+    await state.update_data(currency=curr)
+    await state.set_state(NFTCreation.price)
+    await call.message.edit_text(f"Tanlangan valyuta: <b>{curr}</b>\nEndi narxni yozing (masalan: 5 yoki 150000):")
+    await call.answer()
+
+
+@router.message(NFTCreation.price, F.text)
+async def process_price(message: Message, state: FSMContext, bot: Bot):
+    try:
+        price = Decimal(message.text.replace(" ", "").replace(",", "."))
+        if not price.is_finite() or price <= 0 or price > Decimal("1000000000000"):
+            raise ValueError()
+        price = price.quantize(Decimal("0.01"))
+    except Exception:
+        await message.answer("❌ Noto'g'ri narx. Musbat raqam yozing (masalan: 5 yoki 150000):")
+        return
+
+    data = await state.get_data()
+    await state.clear()
+    uid = message.from_user.id
+
+    async with AsyncSessionLocal() as session:
+        user = await session.get(User, uid)
+        if not user:
+            user = User(telegram_id=uid, username=message.from_user.username, full_name=message.from_user.full_name)
+            session.add(user)
+        else:
+            user.username = message.from_user.username
+            user.full_name = message.from_user.full_name
+        await session.commit()
+
+        err = await NFTService.check_can_post(session, uid)
+        if err:
+            await message.answer(err)
+            return
+
+        nft = await NFTService.create_nft(
+            session=session,
+            seller_id=uid,
+            nft_link=data["nft_link"],
+            price=price,
+            currency=Currency(data["currency"]),
+        )
+
+    await message.answer(
+        f"✅ NFT qabul qilindi.\n\n❗️ Avval NFT ni @{config.PLATFORM_ADMIN_USERNAME} ga tashlang (yuboring).\n"
+        f"Admin tasdiqlagach {config.EXPIRATION_DAYS} kun davomida guruhlarda reklama qilinadi."
+    )
+
+    text = (
+        "<b>Yangi NFT tasdiqlash uchun</b>\n"
+        f"ID: #{nft.id}\n"
+        f"Sotuvchi: @{esc(message.from_user.username)}\n"
+        f"Narx: {fmt_price(nft.price, nft.currency.value)} {nft.currency.value}\n"
+        f"Link: {nft.nft_link}"
+    )
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, text, reply_markup=get_admin_approval_kb(nft.id))
+        except Exception as e:
+            print(f"[ADMIN NOTIFY ERROR] {admin_id}: {e}")
+
+
+@router.message(F.text == "📂 Mening NFTlarim")
+async def my_nfts(message: Message):
+    uid = message.from_user.id
+    async with AsyncSessionLocal() as session:
+        lim = await NFTService.get_limits(session, uid)
+        res = await session.execute(
+            select(NFT).where(
+                NFT.seller_id == uid,
+                NFT.status.in_([NFTStatus.PENDING, NFTStatus.ACTIVE]),
+            ).order_by(NFT.id.desc())
+        )
+        nfts = res.scalars().all()
+
+    await message.answer(
+        f"📂 <b>Mening NFTlarim</b>\n"
+        f"Faol: {lim['active']}/{lim['max_active']} | Bugun: {lim['today']}/{lim['daily']}"
+    )
+    if not nfts:
+        await message.answer("Hozircha faol NFT yo'q.")
+        return
+    for n in nfts:
+        if n.status == NFTStatus.PENDING:
+            st = "⏳ Admin tasdig'i kutilmoqda"
+        else:
+            st = f"🟢 Faol, qoldi: {time_left(n.expires_at)}"
+        text = (
+            f"🖼 <b>NFT #{n.id}</b>\n"
+            f"🔗 {n.nft_link}\n"
+            f"💰 {fmt_price(n.price, n.currency.value)} {n.currency.value}\n"
+            f"👁 Bosildi: {n.clicks}\n{st}"
+        )
+        await message.answer(text, reply_markup=get_my_nft_kb(n.id, sellable=n.status == NFTStatus.ACTIVE))
+
+
+@router.callback_query(F.data.startswith("buy_"))
+async def handle_buy_click(call: CallbackQuery):
+    nft_id = int(call.data.split("_")[1])
+    async with AsyncSessionLocal() as session:
+        nft = await session.get(NFT, nft_id)
+        if not nft or nft.status != NFTStatus.ACTIVE:
+            await call.answer("Bu NFT endi sotuvda emas.", show_alert=True)
+            return
+        nft.clicks += 1
+        seller = await session.get(User, nft.seller_id)
+        await session.commit()
+    if seller and seller.username:
+        text = (
+            f"Sotuvchi: @{seller.username}\n"
+            f"Narx: {fmt_price(nft.price, nft.currency.value)} {nft.currency.value}\n"
+            "⚠️ Avval NFT ni tekshiring, keyin to'lang."
+        )
+    else:
+        text = "Sotuvchining username'i yo'q. Boshqa NFT tanlang."
+    await call.answer(text, show_alert=True)
+
+
+@router.callback_query(F.data.startswith("sold_"))
+async def mark_sold(call: CallbackQuery, bot: Bot):
+    nft_id = int(call.data.split("_")[1])
+    async with AsyncSessionLocal() as session:
+        nft = await session.get(NFT, nft_id)
+        if not nft or nft.seller_id != call.from_user.id or nft.status != NFTStatus.ACTIVE:
+            await call.answer("Bu NFT ni o'zgartirib bo'lmaydi.", show_alert=True)
+            return
+        tx = await NFTService.mark_sold(session, nft)
+        cur = nft.currency.value
+        price_txt = fmt_price(nft.price, cur)
+        comm_txt = fmt_price(tx.commission, cur) if cur == "UZS" else f"{tx.commission:.2f}"
+    await delete_nft_ads(bot, nft_id)
+    await call.message.edit_text(
+        f"✅ NFT #{nft_id} sotildi deb belgilandi va reklamadan olindi.\n"
+        f"💸 Platforma komissiyasi (1%): <b>{comm_txt} {cur}</b> — @{config.PLATFORM_ADMIN_USERNAME} ga to'lang."
+    )
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                f"💰 NFT #{nft_id} sotildi: {price_txt} {cur}\n"
+                f"Sotuvchi: @{esc(call.from_user.username)}\n"
+                f"Komissiya: {comm_txt} {cur}",
+            )
+        except Exception:
+            pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("del_"))
+async def delete_nft(call: CallbackQuery, bot: Bot):
+    nft_id = int(call.data.split("_")[1])
+    async with AsyncSessionLocal() as session:
+        nft = await session.get(NFT, nft_id)
+        if not nft or nft.seller_id != call.from_user.id or nft.status not in (NFTStatus.PENDING, NFTStatus.ACTIVE):
+            await call.answer("Bu NFT ni o'chirib bo'lmaydi.", show_alert=True)
+            return
+        nft.status = NFTStatus.DELETED
+        await session.commit()
+    await delete_nft_ads(bot, nft_id)
+    await call.message.edit_text(f"🗑 NFT #{nft_id} o'chirildi va reklamadan olindi.")
+    await call.answer()
