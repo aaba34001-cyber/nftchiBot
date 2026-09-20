@@ -32,11 +32,13 @@ def nft_title(link: str) -> str:
 def seller_link(s) -> str:
     if not s:
         return "—"
+
     from html import escape
-    name = escape(s.full_name or s.username or "—")
-    if s.username:
-        return f'<a href="https://t.me/{escape(s.username)}">{name}</a>'
-    return name
+
+    # Faqat ism ko‘rsatiladi.
+    # tg://user va @username ishlatilmaydi,
+    # shuning uchun NFT egasiga notification/mention bormaydi.
+    return escape(s.full_name or s.username or "—")
 
 
 async def get_admin_link():
