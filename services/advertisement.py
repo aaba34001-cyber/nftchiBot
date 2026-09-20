@@ -87,6 +87,8 @@ def listing_kb(bot_username: str):
 
 
 async def _delete_old_messages(bot: Bot, session):
+    if not config.DELETE_OLD_LISTINGS:
+        return
     for model in (ListingMessage, AdLog):
         rows = (await session.execute(select(model))).scalars().all()
         for r in rows:

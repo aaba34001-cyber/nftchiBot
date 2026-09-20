@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     AD_INTERVAL_MINUTES: int = 10
     LIMITS_ENABLED: bool = False
     AUTO_APPROVE: bool = False
+    DELETE_OLD_LISTINGS: bool = False
     SHOW_PENDING: bool = True
     EXPIRATION_DAYS: int = 3
     BASE_MAX_ACTIVE: int = 3
