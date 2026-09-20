@@ -32,10 +32,14 @@ def nft_title(link: str) -> str:
 def seller_link(s) -> str:
     if not s:
         return "—"
+
     from html import escape
+
     name = escape(s.full_name or s.username or "—")
-    if s.username:
-        return f'<a href="https://t.me/{escape(s.username)}">{name}</a>'
+
+    if getattr(s, "telegram_id", None):
+        return f'<a href="tg://user?id={s.telegram_id}">{name}</a>'
+
     return name
 
 
