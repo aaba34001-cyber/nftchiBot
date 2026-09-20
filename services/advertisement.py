@@ -34,13 +34,7 @@ def seller_link(s) -> str:
         return "—"
 
     from html import escape
-
-    name = escape(s.full_name or s.username or "—")
-
-    if getattr(s, "telegram_id", None):
-        return f'<a href="tg://user?id={s.telegram_id}">{name}</a>'
-
-    return name
+    return escape(s.full_name or s.username or "—")
 
 
 async def get_admin_link():
