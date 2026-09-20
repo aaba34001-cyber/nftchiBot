@@ -39,19 +39,18 @@ def seller_link(s) -> str:
     return name
 
 
-async def get_admin_link() -> str:
-    from html import escape
-    uname = config.PLATFORM_ADMIN_USERNAME
-    name = None
+async def get_admin_link():
     async with AsyncSessionLocal() as session:
-        u = (await session.execute(
-            select(User).where(func.lower(User.username) == uname.lower())
-        )).scalar_one_or_none()
-        if u and u.full_name:
-            name = u.full_name
-    return f'<a href="https://t.me/{escape(uname)}">{escape(name or "Admin")}</a>'
+        result = await session.execute(
+            select(User).where(User.telegram_id.in_(config.ADMIN_IDS))
+        )
+        admin = result.scalars().first()
 
+        if admin:
+            name = esc(admin.full_name or admin.username or "T")
+            return f'<a href="tg://user?id={admin.telegram_id}">{name}</a>'
 
+    return "T"
 
 def build_lines(nfts) -> list[str]:
     lines = []
@@ -165,7 +164,7 @@ async def refresh_listing(bot: Bot):
                 "━━━━━━━━━━\n"
                 "✅ — admin tasdiqlagan\n"
                 f"➕ NFT qo'yish uchun botga yozing: @{bot_username}\n"
-                f"🤝 NFT olish-sotishda yordam uchun: {admin_link} "
+                f"🤝 NFT olish-sotishda yordam uchun: {admin_link} | 💸 Комиссия: 1%"
                 f""
             )
             parts = build_parts(build_lines(nfts), total, footer)
