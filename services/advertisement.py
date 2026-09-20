@@ -34,6 +34,10 @@ def seller_link(s) -> str:
         return "—"
 
     from html import escape
+
+    # Faqat ism ko‘rsatiladi.
+    # tg://user va @username ishlatilmaydi,
+    # shuning uchun NFT egasiga notification/mention bormaydi.
     return escape(s.full_name or s.username or "—")
 
 
