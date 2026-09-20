@@ -47,7 +47,7 @@ async def get_admin_link():
         admin = result.scalars().first()
 
         if admin:
-            name = esc(admin.full_name or admin.username or "T")
+            name = esc(admin.full_name or "T")
             return f'<a href="tg://user?id={admin.telegram_id}">{name}</a>'
 
     return "T"
