@@ -1,0 +1,11 @@
+.env
+.env.*
+venv/
+__pycache__/
+*.pyc
+*.db
+*.db.bak
+*.bak
+*.bak2
+*.bak3
+backup/
