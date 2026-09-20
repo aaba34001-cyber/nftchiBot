@@ -23,3 +23,5 @@ class Settings(BaseSettings):
 
 
 config = Settings()
+
+COMMISSION_PERCENT: float = 1.0
