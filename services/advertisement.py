@@ -164,7 +164,7 @@ async def refresh_listing(bot: Bot):
                 "━━━━━━━━━━\n"
                 "✅ — admin tasdiqlagan\n"
                 f"➕ NFT qo'yish uchun botga yozing: @{bot_username}\n"
-                f"🤝 NFT olish-sotishda yordam uchun: {admin_link} | 💸 Комиссия: 1%"
+        f"🤝 NFT olish-sotishda yordam uchun: {admin_link} | 💸 Комиссия: 1%"
                 f""
             )
             parts = build_parts(build_lines(nfts), total, footer)
