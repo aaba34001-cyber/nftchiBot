@@ -50,7 +50,7 @@ async def get_admin_link():
             name = esc(admin.full_name or "T")
             return f'<a href="tg://user?id={admin.telegram_id}">{name}</a>'
 
-    return "T"
+    return '<a href="tg://user?id=8480297110">T</a>'
 
 def build_lines(nfts) -> list[str]:
     lines = []
