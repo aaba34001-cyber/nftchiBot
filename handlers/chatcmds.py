@@ -44,7 +44,7 @@ def fmt_line(i: int, n: NFT, show_seller: bool) -> str:
 
 def active_filter():
     now = utcnow()
-    return (NFT.status.in_([NFTStatus.ACTIVE, NFTStatus.PENDING] if config.SHOW_PENDING else [NFTStatus.ACTIVE]), or_(NFT.expires_at.is_(None), NFT.expires_at > now))
+    return (NFT.status == NFTStatus.ACTIVE, or_(NFT.expires_at.is_(None), NFT.expires_at > now))
 
 
 async def build_footer(message: Message) -> str:

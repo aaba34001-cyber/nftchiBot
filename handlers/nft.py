@@ -211,7 +211,6 @@ async def submit_nft(call: CallbackQuery, state: FSMContext, bot: Bot):
             print(f"[POST NOW ERROR] {e}")
     else:
         admin_kb = get_admin_approval_kb(nft.id)
-        await post_nft_now(bot, nft.id)
         await call.message.edit_text(
             "✅ NFT qabul qilindi, guruhga joylandi (⏳ tasdiqlanmagan).\n\n"
             f"❗️ Tasdiqlanishi uchun @{config.PLATFORM_ADMIN_USERNAME} ga <b>15 ⭐ Stars li GIF</b> tashlang.\n"

@@ -135,7 +135,7 @@ async def refresh_listing(bot: Bot):
                 select(NFT)
                 .options(selectinload(NFT.seller))
                 .where(
-                    NFT.status.in_(SHOWN_STATUSES),
+                    NFT.status == NFTStatus.ACTIVE,
                     or_(NFT.expires_at.is_(None), NFT.expires_at > now),
                 )
             )
