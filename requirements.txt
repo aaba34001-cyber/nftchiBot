@@ -1,7 +1,7 @@
-aiogram>=3.3.0
-SQLAlchemy>=2.0.25
-asyncpg>=0.29.0
-aiosqlite>=0.19.0
-pydantic-settings>=2.1.0
-APScheduler>=3.10.4
-python-dotenv>=1.0.1
+aiogram==3.31.0
+apscheduler>=3.10.0
+sqlalchemy[asyncio]>=2.0
+aiosqlite
+asyncpg
+python-dotenv
+pydantic-settings
