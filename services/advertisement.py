@@ -32,14 +32,15 @@ def nft_title(link: str) -> str:
 def seller_link(s) -> str:
     if not s:
         return "—"
-    name = esc(s.full_name or s.username or "—")
+    from html import escape
+    name = escape(s.full_name or s.username or "—")
     if s.username:
-        return f'<a href="https://t.me/{esc(s.username)}">{name}</a>'
+        return f'<a href="https://t.me/{escape(s.username)}">{name}</a>'
     return name
 
 
 async def get_admin_link() -> str:
-    """Admin ismi (bosilsa profiliga o'tadi)."""
+    from html import escape
     uname = config.PLATFORM_ADMIN_USERNAME
     name = None
     async with AsyncSessionLocal() as session:
@@ -48,7 +49,8 @@ async def get_admin_link() -> str:
         )).scalar_one_or_none()
         if u and u.full_name:
             name = u.full_name
-    return f'<a href="https://t.me/{esc(uname)}">{esc(name or "Admin")}</a>'
+    return f'<a href="https://t.me/{escape(uname)}">{escape(name or "Admin")}</a>'
+
 
 
 def build_lines(nfts) -> list[str]:
